@@ -1,0 +1,10 @@
+{
+  "name": "mqtt-service",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "node index.js"
+  },
+  "dependencies": {
+    "mqtt": "^5.3.5"
+  }
+}
