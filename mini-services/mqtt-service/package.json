@@ -5,6 +5,9 @@
     "dev": "node index.js"
   },
   "dependencies": {
-    "mqtt": "^5.3.5"
+    "@supabase/supabase-js": "^2.98.0",
+    "dotenv": "^17.3.1",
+    "mqtt": "^5.3.5",
+    "ws": "^8.19.0"
   }
 }

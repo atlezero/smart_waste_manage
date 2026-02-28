@@ -34,11 +34,11 @@ export default function SearchBar() {
     }
 
     const query = searchQuery.toLowerCase();
-    
+
     // Search in bins
     const binResults = bins
-      .filter(bin => 
-        bin.clientId.toLowerCase().includes(query) ||
+      .filter(bin =>
+        bin.apiKey?.toLowerCase().includes(query) ||
         bin.name.toLowerCase().includes(query) ||
         bin.address.toLowerCase().includes(query) ||
         bin.district?.toLowerCase().includes(query) ||
@@ -83,7 +83,7 @@ export default function SearchBar() {
 
   const handleSearchLocation = async () => {
     if (!searchQuery.trim()) return;
-    
+
     setIsLoadingLocation(true);
     try {
       // Use Nominatim for geocoding
@@ -91,7 +91,7 @@ export default function SearchBar() {
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=3`
       );
       const data = await response.json();
-      
+
       if (data.length > 0) {
         const locationResults: SearchResult[] = data.map((item: { display_name: string; lat: string; lon: string }) => ({
           type: 'location' as const,
@@ -102,7 +102,7 @@ export default function SearchBar() {
             lng: parseFloat(item.lon),
           },
         }));
-        
+
         setResults(prev => [...prev.filter(r => r.type === 'bin'), ...locationResults]);
       }
     } catch (error) {
@@ -165,9 +165,8 @@ export default function SearchBar() {
                   onClick={() => handleSelectResult(result)}
                   className="w-full p-3 flex items-center gap-3 hover:bg-yellow-50 transition-colors text-left"
                 >
-                  <div className={`p-2 rounded-lg ${
-                    result.type === 'bin' ? 'bg-yellow-100' : 'bg-blue-100'
-                  }`}>
+                  <div className={`p-2 rounded-lg ${result.type === 'bin' ? 'bg-yellow-100' : 'bg-blue-100'
+                    }`}>
                     {result.type === 'bin' ? (
                       <Trash2 className="w-4 h-4 text-yellow-600" />
                     ) : (
@@ -179,8 +178,8 @@ export default function SearchBar() {
                       {result.type === 'bin' ? result.bin?.name : result.location?.name}
                     </p>
                     <p className="text-sm text-gray-500 truncate">
-                      {result.type === 'bin' 
-                        ? `${result.bin?.clientId} • ${result.bin?.address}`
+                      {result.type === 'bin'
+                        ? `${result.bin?.address}`
                         : result.location?.address
                       }
                     </p>
@@ -188,7 +187,7 @@ export default function SearchBar() {
                 </button>
               ))}
             </div>
-            
+
             {/* Search location button */}
             <div className="border-t p-2">
               <button

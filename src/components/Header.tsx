@@ -1,8 +1,9 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trash2, Map, LayoutDashboard, Layers, Sun, Moon, Locate, Plus, Menu, X, Crosshair, XCircle } from 'lucide-react';
+import { Trash2, Map, LayoutDashboard, Layers, Sun, Moon, Locate, Plus, Menu, X, Crosshair, XCircle, Key, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,7 +11,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useAppStore, MapTheme } from '@/store/app-store';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { signOut } from 'next-auth/react';
 
 const mapThemes: { value: MapTheme; label: string; icon: React.ElementType }[] = [
   { value: 'streets', label: 'แผนที่ทั่วไป', icon: Map },
@@ -165,11 +167,10 @@ export default function Header() {
           {viewMode === 'map' && (
             <Button
               onClick={handleToggleAddBin}
-              className={`shadow-lg rounded-xl ${
-                isAddingBin 
-                  ? 'bg-red-500 hover:bg-red-600 text-white' 
-                  : 'bg-yellow-500 hover:bg-yellow-600 text-white'
-              }`}
+              className={`shadow-lg rounded-xl ${isAddingBin
+                ? 'bg-red-500 hover:bg-red-600 text-white'
+                : 'bg-yellow-500 hover:bg-yellow-600 text-white'
+                }`}
             >
               {isAddingBin ? (
                 <>
@@ -184,6 +185,29 @@ export default function Header() {
               )}
             </Button>
           )}
+
+          {/* API Keys Button */}
+          <Link href="/api-keys">
+            <Button
+              variant="outline"
+              size="sm"
+              className="bg-white/90 backdrop-blur shadow-lg rounded-xl border-blue-200 text-blue-600 hover:bg-blue-50"
+            >
+              <Key className="w-4 h-4 mr-1" />
+              API Keys
+            </Button>
+          </Link>
+
+          {/* Logout Button */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => signOut({ callbackUrl: '/login' })}
+            className="bg-white/90 backdrop-blur shadow-lg rounded-xl border-red-200 text-red-600 hover:bg-red-50"
+          >
+            <LogOut className="w-4 h-4 mr-1" />
+            ออกจากระบบ
+          </Button>
         </div>
 
         {/* Mobile Menu Button */}
@@ -277,11 +301,10 @@ export default function Header() {
           {viewMode === 'map' && (
             <Button
               onClick={handleToggleAddBin}
-              className={`w-full rounded-lg ${
-                isAddingBin 
-                  ? 'bg-red-500 hover:bg-red-600 text-white' 
-                  : 'bg-yellow-500 hover:bg-yellow-600 text-white'
-              }`}
+              className={`w-full rounded-lg ${isAddingBin
+                ? 'bg-red-500 hover:bg-red-600 text-white'
+                : 'bg-yellow-500 hover:bg-yellow-600 text-white'
+                }`}
             >
               {isAddingBin ? (
                 <>
@@ -297,6 +320,19 @@ export default function Header() {
             </Button>
           )}
 
+          {/* API Keys Button for Mobile */}
+          <Link href="/api-keys" className="w-full">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full rounded-lg border-blue-200 text-blue-600 hover:bg-blue-50"
+              onClick={() => setIsMobileMenuOpen(false)}
+            >
+              <Key className="w-4 h-4 mr-1" />
+              จัดการ API Keys
+            </Button>
+          </Link>
+
           {/* Add bin mode indicator for mobile */}
           {isAddingBin && (
             <div className="flex items-center gap-2 bg-yellow-100 text-yellow-800 px-3 py-2 rounded-lg text-sm">
@@ -304,6 +340,17 @@ export default function Header() {
               <span>จิ้มบนแผนที่เพื่อวางถังขยะ</span>
             </div>
           )}
+
+          {/* Logout Button for Mobile */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full rounded-lg border-red-200 text-red-600 hover:bg-red-50"
+            onClick={() => signOut({ callbackUrl: '/login' })}
+          >
+            <LogOut className="w-4 h-4 mr-1" />
+            ออกจากระบบ
+          </Button>
         </motion.div>
       )}
     </header>

@@ -2,16 +2,16 @@
 
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Trash2, Lightbulb, TrendingUp, MapPin, Clock, AlertTriangle, CheckCircle, AlertCircle } from 'lucide-react';
+import { Trash2, Lightbulb, TrendingUp, MapPin, Clock, AlertTriangle, CheckCircle, AlertCircle, WifiOff, Wifi } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAppStore, Bin } from '@/store/app-store';
 
 // Get gradient color from green to yellow to red based on waste level
 const getGradientColor = (level: number): string => {
   const clampedLevel = Math.max(0, Math.min(100, level));
-  
+
   let r: number, g: number, b: number;
-  
+
   if (clampedLevel <= 50) {
     const t = clampedLevel / 50;
     r = Math.round(34 + (245 - 34) * t);
@@ -23,7 +23,7 @@ const getGradientColor = (level: number): string => {
     g = Math.round(158 + (68 - 158) * t);
     b = Math.round(11 + (68 - 11) * t);
   }
-  
+
   return `rgb(${r}, ${g}, ${b})`;
 };
 
@@ -38,19 +38,19 @@ interface DashboardStats {
   chartData: { time: string; avgLevel: number }[];
 }
 
-const StatCard = ({ 
-  title, 
-  value, 
-  icon: Icon, 
-  color, 
-  bgColor, 
-  delay 
-}: { 
-  title: string; 
-  value: string | number; 
-  icon: React.ElementType; 
-  color: string; 
-  bgColor: string; 
+const StatCard = ({
+  title,
+  value,
+  icon: Icon,
+  color,
+  bgColor,
+  delay
+}: {
+  title: string;
+  value: string | number;
+  icon: React.ElementType;
+  color: string;
+  bgColor: string;
   delay: number;
 }) => (
   <motion.div
@@ -74,25 +74,25 @@ const StatCard = ({
   </motion.div>
 );
 
-const StatusCard = ({ 
-  title, 
-  count, 
-  total, 
-  color, 
-  bgColor, 
-  icon: Icon, 
-  delay 
-}: { 
-  title: string; 
-  count: number; 
-  total: number; 
-  color: string; 
-  bgColor: string; 
-  icon: React.ElementType; 
+const StatusCard = ({
+  title,
+  count,
+  total,
+  color,
+  bgColor,
+  icon: Icon,
+  delay
+}: {
+  title: string;
+  count: number;
+  total: number;
+  color: string;
+  bgColor: string;
+  icon: React.ElementType;
   delay: number;
 }) => {
   const percentage = total > 0 ? (count / total) * 100 : 0;
-  
+
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.9 }}
@@ -292,7 +292,7 @@ export default function Dashboard() {
                         </div>
                         <div className="text-right">
                           <div className="text-lg font-bold text-red-500">{bin.wasteLevel.toFixed(0)}%</div>
-                          <div className="text-xs text-gray-400">{bin.clientId}</div>
+                          <div className="text-xs text-gray-400">{bin.address}</div>
                         </div>
                       </div>
                     </div>
@@ -323,18 +323,23 @@ export default function Dashboard() {
                   <div key={bin.id} className="p-3 hover:bg-gray-50 transition-colors">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className={`p-2 rounded-lg ${
-                          bin.wasteLevel >= 80 ? 'bg-red-100' :
+                        <div className={`p-2 rounded-lg ${bin.wasteLevel >= 80 ? 'bg-red-100' :
                           bin.wasteLevel >= 50 ? 'bg-yellow-100' : 'bg-green-100'
-                        }`}>
-                          <Trash2 className={`w-4 h-4 ${
-                            bin.wasteLevel >= 80 ? 'text-red-500' :
+                          }`}>
+                          <Trash2 className={`w-4 h-4 ${bin.wasteLevel >= 80 ? 'text-red-500' :
                             bin.wasteLevel >= 50 ? 'text-yellow-500' : 'text-green-500'
-                          }`} />
+                            }`} />
                         </div>
                         <div>
-                          <p className="font-medium text-gray-800 text-sm">{bin.name}</p>
-                          <p className="text-xs text-gray-500">{bin.clientId}</p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="font-medium text-gray-800 text-sm">{bin.name}</p>
+                            {bin.lastUpdate && (Date.now() - new Date(bin.lastUpdate).getTime() <= 60000) ? (
+                              <span title="ออนไลน์"><Wifi className="w-3 h-3 text-green-500" /></span>
+                            ) : (
+                              <span title="ออฟไลน์"><WifiOff className="w-3 h-3 text-red-500" /></span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-500">{bin.address}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-4">

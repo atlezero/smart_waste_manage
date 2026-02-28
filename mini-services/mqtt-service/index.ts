@@ -11,10 +11,15 @@ const MQTT_TOPIC = 'waste_truck/+/data';
 const MAIN_APP_URL = 'http://localhost:3000/api/sensor';
 
 interface SensorData {
-  clientID: string;
+  // รองรับทุก field name ที่ ESP32 อาจส่งมา
+  clientID?: string;  // legacy format
+  apiKey?: string;    // camelCase
+  api_key?: string;   // snake_case (ESP32 ส่งมาในรูปแบบนี้)
   distance_cm: number;
   light_level: number;
   light_status: 'ON' | 'OFF';
+  red_led?: 'ON' | 'OFF';
+  green_led?: 'ON' | 'OFF';
 }
 
 let reconnectAttempts = 0;
@@ -41,7 +46,7 @@ function connectMQTT() {
 
   ws.onopen = () => {
     console.log('✅ WebSocket connected, sending MQTT CONNECT...');
-    
+
     // Send MQTT CONNECT packet
     const connectPacket = createConnectPacket('mqtt-service-' + Date.now());
     ws!.send(connectPacket);
@@ -59,12 +64,12 @@ function connectMQTT() {
   ws.onclose = (event) => {
     console.log('🔌 WebSocket closed:', event.code, event.reason);
     connected = false;
-    
+
     if (pingInterval) {
       clearInterval(pingInterval);
       pingInterval = null;
     }
-    
+
     // Attempt reconnect
     if (reconnectAttempts < maxReconnectAttempts) {
       reconnectAttempts++;
@@ -85,13 +90,13 @@ function createConnectPacket(clientId: string): Uint8Array {
   const password = MQTT_PASSWORD;
 
   // Calculate remaining length
-  const variableHeader = 
+  const variableHeader =
     2 + protocolName.length + // Protocol name length + name
     1 + // Protocol level
     1 + // Connect flags
     2;  // Keep alive
 
-  const payload = 
+  const payload =
     2 + clientId.length + clientId.length +
     2 + username.length + username.length +
     2 + password.length + password.length;
@@ -113,13 +118,13 @@ function createConnectPacket(clientId: string): Uint8Array {
   for (let i = 0; i < protocolName.length; i++) {
     packet[pos++] = protocolName.charCodeAt(i);
   }
-  
+
   // Protocol level
   packet[pos++] = protocolLevel;
-  
+
   // Connect flags (username + password + clean session)
   packet[pos++] = 0xC2;
-  
+
   // Keep alive
   packet[pos++] = (keepAlive >> 8) & 0xFF;
   packet[pos++] = keepAlive & 0xFF;
@@ -151,7 +156,7 @@ function createConnectPacket(clientId: string): Uint8Array {
 
 function createSubscribePacket(topic: string): Uint8Array {
   const packetId = messageId++;
-  
+
   const variableHeader = 2; // Packet ID
   const payload = 2 + topic.length + topic.length + 1; // Topic filter + QoS
   const remainingLength = variableHeader + payload;
@@ -173,7 +178,7 @@ function createSubscribePacket(topic: string): Uint8Array {
   for (let i = 0; i < topic.length; i++) {
     packet[pos++] = topic.charCodeAt(i);
   }
-  
+
   // QoS
   packet[pos++] = 0x01;
 
@@ -193,11 +198,11 @@ function handleMqttPacket(data: Uint8Array) {
       connected = true;
       reconnectAttempts = 0;
       reconnectDelay = 1000;
-      
+
       // Subscribe to topic
       console.log(`📡 Subscribing to: ${MQTT_TOPIC}`);
       ws!.send(createSubscribePacket(MQTT_TOPIC));
-      
+
       // Start ping interval
       pingInterval = setInterval(() => {
         if (connected && ws) {
@@ -226,7 +231,7 @@ function handleMqttPacket(data: Uint8Array) {
 function handlePublish(data: Uint8Array) {
   try {
     let pos = 1;
-    
+
     // Decode remaining length
     let remainingLength = 0;
     let multiplier = 1;
@@ -252,9 +257,9 @@ function handlePublish(data: Uint8Array) {
 
     // Read payload
     const payload = new TextDecoder().decode(data.slice(pos, pos + remainingLength - topicLength - 2 - (qos > 0 ? 2 : 0)));
-    
+
     console.log(`📨 Message on "${topic}": ${payload}`);
-    
+
     // Parse and forward
     try {
       const sensorData: SensorData = JSON.parse(payload);
@@ -274,17 +279,27 @@ async function forwardToMainApp(data: SensorData) {
     const maxDistance = 400; // cm
     const distanceFromTop = data.distance_cm;
     const wasteLevel = Math.max(0, Math.min(100, ((maxDistance - distanceFromTop) / maxDistance) * 100));
-    
+
+    // ดึง API Key จากทุก field name ที่เป็นไปได้
+    const resolvedKey = data.api_key || data.apiKey || data.clientID;
+
+    if (!resolvedKey) {
+      console.error('❌ No API Key found in sensor data! Fields available:', Object.keys(data));
+      return;
+    }
+
     const payload = {
-      clientId: data.clientID,
+      apiKey: resolvedKey,
       wasteLevel: parseFloat(wasteLevel.toFixed(1)),
       lightLevel: data.light_level,
       lightStatus: data.light_status === 'ON',
+      ledRed: data.red_led === 'ON',
+      ledGreen: data.green_led === 'ON',
       distanceCm: data.distance_cm,
     };
-    
-    console.log('📤 Forwarding to main app:', JSON.stringify(payload));
-    
+
+    console.log(`🔑 Using API Key: ${resolvedKey.substring(0, 16)}...`);
+
     const response = await fetch(MAIN_APP_URL, {
       method: 'POST',
       headers: {
@@ -292,7 +307,7 @@ async function forwardToMainApp(data: SensorData) {
       },
       body: JSON.stringify(payload),
     });
-    
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error('❌ Failed to forward data:', response.status, errorText);

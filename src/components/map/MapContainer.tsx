@@ -30,9 +30,9 @@ function shouldShowWarning(bin: Bin): boolean {
 const getGradientColor = (level: number): string => {
   // 0% = green (#22c55e), 50% = yellow (#f59e0b), 100% = red (#ef4444)
   const clampedLevel = Math.max(0, Math.min(100, level));
-  
+
   let r: number, g: number, b: number;
-  
+
   if (clampedLevel <= 50) {
     // Green to Yellow (0% to 50%)
     const t = clampedLevel / 50;
@@ -48,7 +48,7 @@ const getGradientColor = (level: number): string => {
     g = Math.round(158 + (68 - 158) * t);
     b = Math.round(11 + (68 - 11) * t);
   }
-  
+
   return `rgb(${r}, ${g}, ${b})`;
 };
 
@@ -58,22 +58,22 @@ const createBinIcon = (wasteLevel: number, isSelected: boolean = false, showWarn
   const color = getGradientColor(wasteLevel);
 
   const size = isSelected ? 40 : 32;
-  
+
   // If warning, add exclamation mark
   const warningBadge = showWarning ? `
     <circle cx="${size - 8}" cy="8" r="10" fill="#ef4444" stroke="#ffffff" stroke-width="2"/>
     <text x="${size - 8}" y="13" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="bold">!</text>
   ` : '';
-  
+
   const svgIcon = `
     <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size + (showWarning ? 4 : 0)}" viewBox="0 0 ${size} ${size + (showWarning ? 4 : 0)}">
       <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" 
-        transform="scale(${size/24})" 
+        transform="scale(${size / 24})" 
         fill="${showWarning ? '#9ca3af' : color}" 
         stroke="${isSelected ? '#1e40af' : '#ffffff'}" 
         stroke-width="${isSelected ? 2 : 1.5}"/>
-      <line x1="${size * 10/24}" y1="${size * 11/24}" x2="${size * 10/24}" y2="${size * 17/24}" stroke="#ffffff" stroke-width="2" transform="scale(${size/24})"/>
-      <line x1="${size * 14/24}" y1="${size * 11/24}" x2="${size * 14/24}" y2="${size * 17/24}" stroke="#ffffff" stroke-width="2" transform="scale(${size/24})"/>
+      <line x1="${size * 10 / 24}" y1="${size * 11 / 24}" x2="${size * 10 / 24}" y2="${size * 17 / 24}" stroke="#ffffff" stroke-width="2" transform="scale(${size / 24})"/>
+      <line x1="${size * 14 / 24}" y1="${size * 11 / 24}" x2="${size * 14 / 24}" y2="${size * 17 / 24}" stroke="#ffffff" stroke-width="2" transform="scale(${size / 24})"/>
       ${warningBadge}
     </svg>
   `;
@@ -205,9 +205,9 @@ function MapController() {
 
   // Fly to user location when locating
   useEffect(() => {
-    if (isLocating && userLocation && 
-        typeof userLocation.latitude === 'number' && 
-        typeof userLocation.longitude === 'number') {
+    if (isLocating && userLocation &&
+      typeof userLocation.latitude === 'number' &&
+      typeof userLocation.longitude === 'number') {
       map.flyTo([userLocation.latitude, userLocation.longitude], 15, {
         duration: 1,
       });
@@ -224,9 +224,9 @@ function InitialLocationCenter() {
   const hasCenteredRef = useRef(false);
 
   useEffect(() => {
-    if (userLocation && !hasCenteredRef.current && 
-        typeof userLocation.latitude === 'number' && 
-        typeof userLocation.longitude === 'number') {
+    if (userLocation && !hasCenteredRef.current &&
+      typeof userLocation.latitude === 'number' &&
+      typeof userLocation.longitude === 'number') {
       map.flyTo([userLocation.latitude, userLocation.longitude], 15, {
         duration: 1.5,
       });
@@ -242,7 +242,7 @@ function MapEventsHandler({ onMapClick }: { onMapClick: (lat: number, lng: numbe
   const { setMapCenter, setMapZoom, isAddingBin } = useAppStore();
   const lastCenterRef = useRef<[number, number] | null>(null);
   const lastZoomRef = useRef<number | null>(null);
-  
+
   useMapEvents({
     click: (e) => {
       if (isAddingBin) {
@@ -252,18 +252,18 @@ function MapEventsHandler({ onMapClick }: { onMapClick: (lat: number, lng: numbe
     moveend: (e) => {
       const center = e.target.getCenter();
       const newCenter: [number, number] = [center.lat, center.lng];
-      
+
       // Only update if center has actually changed (more than 0.0001 degrees)
-      if (!lastCenterRef.current || 
-          Math.abs(lastCenterRef.current[0] - newCenter[0]) > 0.0001 ||
-          Math.abs(lastCenterRef.current[1] - newCenter[1]) > 0.0001) {
+      if (!lastCenterRef.current ||
+        Math.abs(lastCenterRef.current[0] - newCenter[0]) > 0.0001 ||
+        Math.abs(lastCenterRef.current[1] - newCenter[1]) > 0.0001) {
         lastCenterRef.current = newCenter;
         setMapCenter(newCenter);
       }
     },
     zoomend: (e) => {
       const zoom = e.target.getZoom();
-      
+
       // Only update if zoom has actually changed
       if (lastZoomRef.current !== zoom) {
         lastZoomRef.current = zoom;
@@ -296,11 +296,11 @@ function CursorChanger() {
 }
 
 // Draggable marker for new bin
-function DraggableNewBinMarker({ 
-  position, 
-  onDragEnd 
-}: { 
-  position: [number, number]; 
+function DraggableNewBinMarker({
+  position,
+  onDragEnd
+}: {
+  position: [number, number];
   onDragEnd: (lat: number, lng: number) => void;
 }) {
   return (
@@ -335,7 +335,7 @@ interface BinMarkerProps {
 
 function BinMarker({ bin, onSelect, isSelected, isHighlighted }: BinMarkerProps) {
   const showWarning = shouldShowWarning(bin);
-  
+
   return (
     <Marker
       position={[bin.latitude, bin.longitude]}
@@ -352,8 +352,7 @@ function BinMarker({ bin, onSelect, isSelected, isHighlighted }: BinMarkerProps)
               </span>
             )}
           </div>
-          <p className="text-xs text-gray-500 mb-2">{bin.clientId}</p>
-          <p className="text-sm text-gray-600 mb-2">{bin.address}</p>
+          <p className="text-xs text-gray-500 mb-2">{bin.address}</p>
           <div className="flex items-center gap-2 mb-2">
             <span className="text-xs font-medium">ระดับขยะ:</span>
             <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
@@ -391,7 +390,7 @@ function BinMarker({ bin, onSelect, isSelected, isHighlighted }: BinMarkerProps)
 function BinFilterControl() {
   const { binFilter, setBinFilter, bins } = useAppStore();
   const [isOpen, setIsOpen] = useState(false);
-  
+
   const filterOptions: { value: BinFilter; label: string; color: string }[] = [
     { value: 'all', label: 'ทั้งหมด', color: 'bg-gray-500' },
     { value: 'empty', label: 'ว่าง (< 50%)', color: 'bg-green-500' },
@@ -400,10 +399,10 @@ function BinFilterControl() {
     { value: 'warning', label: 'มีปัญหา', color: 'bg-orange-500' },
     { value: 'offline', label: 'ออฟไลน์', color: 'bg-gray-400' },
   ];
-  
+
   const currentFilter = filterOptions.find(f => f.value === binFilter);
   const filteredCount = filterBins(bins, binFilter).length;
-  
+
   return (
     <div className="relative">
       <button
@@ -418,10 +417,10 @@ function BinFilterControl() {
           {filteredCount}
         </span>
       </button>
-      
+
       {isOpen && (
         <>
-          <div 
+          <div
             className="fixed inset-0 z-10"
             onClick={() => setIsOpen(false)}
           />
@@ -433,9 +432,8 @@ function BinFilterControl() {
                   setBinFilter(option.value);
                   setIsOpen(false);
                 }}
-                className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 transition-colors ${
-                  binFilter === option.value ? 'bg-gray-50' : ''
-                }`}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 transition-colors ${binFilter === option.value ? 'bg-gray-50' : ''
+                  }`}
               >
                 <span className={`w-3 h-3 rounded-full ${option.color}`} />
                 <span className="flex-1 text-left text-gray-700">{option.label}</span>
@@ -456,12 +454,12 @@ interface MapViewProps {
 }
 
 export default function MapView({ onBinSelect }: MapViewProps) {
-  const { 
-    bins, 
-    mapTheme, 
-    userLocation, 
-    highlightedBinId, 
-    selectedBin, 
+  const {
+    bins,
+    mapTheme,
+    userLocation,
+    highlightedBinId,
+    selectedBin,
     mapCenter,
     isAddingBin,
     newBinLocation,
@@ -490,7 +488,7 @@ export default function MapView({ onBinSelect }: MapViewProps) {
   }, [setNewBinLocation]);
 
   const tileConfig = tileUrls[mapTheme];
-  
+
   // Filter bins based on current filter
   const filteredBins = filterBins(bins, binFilter);
 
@@ -500,7 +498,7 @@ export default function MapView({ onBinSelect }: MapViewProps) {
       <div className="absolute top-32 left-4 z-20">
         <BinFilterControl />
       </div>
-      
+
       <MapContainer
         center={mapCenter}
         zoom={12}
@@ -515,7 +513,7 @@ export default function MapView({ onBinSelect }: MapViewProps) {
         <MapEventsHandler onMapClick={handleMapClickForNewBin} />
         <InitialLocationCenter />
         <CursorChanger />
-        
+
         {/* Route polyline */}
         {isNavigating && routeInfo && routeInfo.coordinates.length > 0 && (
           <Polyline
@@ -525,33 +523,33 @@ export default function MapView({ onBinSelect }: MapViewProps) {
             opacity={0.9}
           />
         )}
-        
+
         {/* User location marker - Arrow when navigating, circle otherwise */}
-        {userLocation && 
-         typeof userLocation.latitude === 'number' && 
-         typeof userLocation.longitude === 'number' && (
-          <>
-            <Marker
-              position={[userLocation.latitude, userLocation.longitude]}
-              icon={isNavigating 
-                ? createNavigationArrowIcon(userLocation.heading || 0)
-                : userIcon
-              }
-            />
-            {!isNavigating && (
-              <Circle
-                center={[userLocation.latitude, userLocation.longitude]}
-                radius={100}
-                pathOptions={{
-                  color: '#3b82f6',
-                  fillColor: '#3b82f6',
-                  fillOpacity: 0.1,
-                  weight: 1,
-                }}
+        {userLocation &&
+          typeof userLocation.latitude === 'number' &&
+          typeof userLocation.longitude === 'number' && (
+            <>
+              <Marker
+                position={[userLocation.latitude, userLocation.longitude]}
+                icon={isNavigating
+                  ? createNavigationArrowIcon(userLocation.heading || 0)
+                  : userIcon
+                }
               />
-            )}
-          </>
-        )}
+              {!isNavigating && (
+                <Circle
+                  center={[userLocation.latitude, userLocation.longitude]}
+                  radius={100}
+                  pathOptions={{
+                    color: '#3b82f6',
+                    fillColor: '#3b82f6',
+                    fillOpacity: 0.1,
+                    weight: 1,
+                  }}
+                />
+              )}
+            </>
+          )}
 
         {/* New bin marker (when in add mode) */}
         {isAddingBin && newBinLocation && (

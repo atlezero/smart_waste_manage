@@ -1,22 +1,24 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, MapPin, Trash2, Lightbulb, Thermometer, Droplets, Navigation, Clock, Edit, Trash, Loader2, ExternalLink, Save, XCircle } from 'lucide-react';
+import { X, MapPin, Trash2, Lightbulb, Thermometer, Droplets, Navigation, Clock, Edit, Trash, Loader2, ExternalLink, Save, XCircle, Key, Copy, Check, Wifi, WifiOff } from 'lucide-react';
 import { Bin, useAppStore, RouteInfo, RouteStep } from '@/store/app-store';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useState } from 'react';
+import { Switch } from '@/components/ui/switch';
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
+import { useSession } from 'next-auth/react';
 
 // Get gradient color from green to yellow to red based on waste level
 const getGradientColor = (level: number): string => {
   // 0% = green (#22c55e), 50% = yellow (#f59e0b), 100% = red (#ef4444)
   const clampedLevel = Math.max(0, Math.min(100, level));
-  
+
   let r: number, g: number, b: number;
-  
+
   if (clampedLevel <= 50) {
     // Green to Yellow (0% to 50%)
     const t = clampedLevel / 50;
@@ -32,7 +34,7 @@ const getGradientColor = (level: number): string => {
     g = Math.round(158 + (68 - 158) * t);
     b = Math.round(11 + (68 - 11) * t);
   }
-  
+
   return `rgb(${r}, ${g}, ${b})`;
 };
 
@@ -64,7 +66,7 @@ function formatDuration(seconds: number): string {
 function getInstructionText(maneuverType: string, maneuverModifier: string, roadName: string): string {
   const name = roadName || 'ถนนไม่ทราบชื่อ';
   const modifier = maneuverModifier?.toLowerCase() || '';
-  
+
   if (maneuverType === 'turn') {
     if (modifier.includes('sharp left')) return `เลี้ยวซ้ายแฉกที่ ${name}`;
     if (modifier.includes('sharp right')) return `เลี้ยวขวาแฉกที่ ${name}`;
@@ -75,7 +77,7 @@ function getInstructionText(maneuverType: string, maneuverModifier: string, road
     if (modifier.includes('uturn')) return `กลับรถที่ ${name}`;
     return `เลี้ยวที่ ${name}`;
   }
-  
+
   if (maneuverType === 'new name' || maneuverType === 'continue') {
     if (modifier.includes('slight left')) return `เบี่ยงซ้ายเล็กน้อยเข้าสู่ ${name}`;
     if (modifier.includes('slight right')) return `เบี่ยงขวาเล็กน้อยเข้าสู่ ${name}`;
@@ -83,17 +85,17 @@ function getInstructionText(maneuverType: string, maneuverModifier: string, road
     if (modifier.includes('right')) return `เบี่ยงขวาเข้าสู่ ${name}`;
     return `ไปตรงบน ${name}`;
   }
-  
+
   if (maneuverType === 'merge') {
     if (modifier.includes('left')) return `รวมเข้าซ้ายสู่ ${name}`;
     if (modifier.includes('right')) return `รวมเข้าขวาสู่ ${name}`;
     return `รวมเข้า ${name}`;
   }
-  
+
   if (maneuverType === 'roundabout') return `เข้าวงเวียน แล้วออกที่ ${name}`;
   if (maneuverType === 'arrive') return `ถึงปลายทาง`;
   if (maneuverType === 'depart') return `เริ่มต้นจาก ${name}`;
-  
+
   if (maneuverType === 'on ramp') {
     if (modifier.includes('left')) return `ขึ้นทางลงซ้าย ${name}`;
     if (modifier.includes('right')) return `ขึ้นทางลงขวา ${name}`;
@@ -104,13 +106,13 @@ function getInstructionText(maneuverType: string, maneuverModifier: string, road
     if (modifier.includes('right')) return `ลงทางลงขวา ${name}`;
     return `ลงทางลง ${name}`;
   }
-  
+
   if (maneuverType === 'fork') {
     if (modifier.includes('left')) return `เลือกแยกซ้ายไป ${name}`;
     if (modifier.includes('right')) return `เลือกแยกขวาไป ${name}`;
     return `แยกไป ${name}`;
   }
-  
+
   return `ไปทาง ${name}`;
 }
 
@@ -120,10 +122,17 @@ export default function BinDetailModal({
   onClose,
   onDelete,
 }: BinDetailModalProps) {
+  const { data: session } = useSession();
+  const userName = session?.user?.name || '';
+  const isAdmin = session?.user?.email?.includes('admin') || false;
+
+  const canDelete = isAdmin || (bin?.createdBy && bin.createdBy === userName);
+
   const { userLocation, startNavigation, updateBin } = useAppStore();
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isOnline, setIsOnline] = useState(false);
   const [editForm, setEditForm] = useState({
     name: '',
     address: '',
@@ -134,6 +143,20 @@ export default function BinDetailModal({
     capacity: 100,
     maxDistance: 400,
   });
+
+  useEffect(() => {
+    if (bin && bin.lastUpdate) {
+      const checkStatus = () => {
+        const lastTime = new Date(bin.lastUpdate).getTime();
+        setIsOnline(Date.now() - lastTime <= 60000); // 1 minute
+      };
+      checkStatus();
+      const interval = setInterval(checkStatus, 5000);
+      return () => clearInterval(interval);
+    } else {
+      setIsOnline(false);
+    }
+  }, [bin]);
 
   // Initialize edit form when bin changes
   useState(() => {
@@ -187,43 +210,43 @@ export default function BinDetailModal({
 
   const handleNavigate = async () => {
     if (!bin || !userLocation) return;
-    
+
     if (typeof userLocation.latitude !== 'number' || typeof userLocation.longitude !== 'number' ||
-        isNaN(userLocation.latitude) || isNaN(userLocation.longitude)) {
+      isNaN(userLocation.latitude) || isNaN(userLocation.longitude)) {
       toast.error('ไม่พบตำแหน่งของคุณ กรุณาลองใหม่อีกครั้ง');
       return;
     }
-    
+
     setIsLoadingRoute(true);
-    
+
     try {
       const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${userLocation.longitude},${userLocation.latitude};${bin.longitude},${bin.latitude}?overview=full&geometries=geojson&steps=true`;
-      
+
       const response = await fetch(osrmUrl);
       const data = await response.json();
-      
+
       if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
         const route = data.routes[0];
-        
+
         const coordinates: [number, number][] = route.geometry.coordinates.map(
           (coord: number[]) => [coord[1], coord[0]]
         );
-        
+
         const steps: RouteStep[] = [];
         if (route.legs && route.legs.length > 0) {
-          route.legs.forEach((leg: { 
-            steps: { 
-              maneuver: { type: string; modifier?: string; location: number[] }; 
-              name: string; 
-              distance: number; 
-              duration: number 
-            }[] 
+          route.legs.forEach((leg: {
+            steps: {
+              maneuver: { type: string; modifier?: string; location: number[] };
+              name: string;
+              distance: number;
+              duration: number
+            }[]
           }) => {
             leg.steps.forEach((step) => {
               steps.push({
                 instruction: getInstructionText(
-                  step.maneuver.type, 
-                  step.maneuver.modifier || '', 
+                  step.maneuver.type,
+                  step.maneuver.modifier || '',
                   step.name
                 ),
                 distance: formatDistance(step.distance),
@@ -241,7 +264,7 @@ export default function BinDetailModal({
           steps,
           coordinates,
         };
-        
+
         startNavigation(bin, routeInfo);
         toast.success('เริ่มนำทางแล้ว');
       } else {
@@ -257,11 +280,11 @@ export default function BinDetailModal({
 
   const handleOpenGoogleMaps = () => {
     if (!bin) return;
-    
+
     const googleMapsUrl = userLocation
       ? `https://www.google.com/maps/dir/?api=1&origin=${userLocation.latitude},${userLocation.longitude}&destination=${bin.latitude},${bin.longitude}&travelmode=driving`
       : `https://www.google.com/maps/search/?api=1&query=${bin.latitude},${bin.longitude}`;
-    
+
     window.open(googleMapsUrl, '_blank');
   };
 
@@ -277,28 +300,28 @@ export default function BinDetailModal({
 
   const handleSaveEdit = async () => {
     if (!bin) return;
-    
+
     if (!editForm.name.trim()) {
       toast.error('กรุณากรอกชื่อถังขยะ');
       return;
     }
-    
+
     if (!editForm.address.trim()) {
       toast.error('กรุณากรอกที่อยู่');
       return;
     }
-    
+
     setIsSaving(true);
-    
+
     try {
       const response = await fetch(`/api/bins/${bin.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editForm),
       });
-      
+
       const result = await response.json();
-      
+
       if (result.success) {
         // Update local state
         const updatedBin: Bin = {
@@ -313,7 +336,7 @@ export default function BinDetailModal({
           maxDistance: editForm.maxDistance,
           updatedAt: new Date().toISOString(),
         };
-        
+
         updateBin(updatedBin);
         toast.success('บันทึกข้อมูลสำเร็จ');
         setIsEditMode(false);
@@ -325,6 +348,65 @@ export default function BinDetailModal({
       toast.error('ไม่สามารถบันทึกข้อมูลได้');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const toggleLight = async (type: 'main' | 'green' | 'red' | 'auto' | 'auto_status') => {
+    if (!bin) return;
+
+    if (!isOnline) {
+      toast.error('ไม่สามารถส่งคำสั่งได้ อุปกรณ์ออฟไลน์');
+      return;
+    }
+
+    // กำหนดค่าใหม่ที่ต้องการ toggle
+    const newLightStatus = type === 'main' ? !bin.lightStatus : bin.lightStatus;
+    const newLedGreen = type === 'green' ? !bin.ledGreen : bin.ledGreen;
+    const newLedRed = type === 'red' ? !bin.ledRed : bin.ledRed;
+    const newAutoLight = type === 'auto' ? !bin.autoLight : bin.autoLight;
+    const newAutoStatus = type === 'auto_status' ? !bin.autoStatus : bin.autoStatus;
+
+    // สร้าง command ที่ส่งไปยัง ESP32 ผ่าน MQTT topic: waste_truck/<api_key>/cmd
+    const command: Record<string, boolean> = {};
+    if (type === 'main') command.light = newLightStatus;
+    if (type === 'green') command.green = newLedGreen;
+    if (type === 'red') command.red = newLedRed;
+    if (type === 'auto') command.auto_light = newAutoLight;
+    if (type === 'auto_status') command.auto_status = newAutoStatus;
+
+    // Optimistic update UI ทันที
+    updateBin({
+      ...bin,
+      lightStatus: newLightStatus,
+      ledGreen: newLedGreen,
+      ledRed: newLedRed,
+      autoLight: newAutoLight,
+      autoStatus: newAutoStatus,
+    });
+
+    try {
+      const response = await fetch('/api/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ binId: bin.id, command }),
+      });
+      const result = await response.json();
+
+      if (result.success) {
+        if (result.mqttStatus === 'offline') {
+          toast.warning('อัปเดต DB แล้ว แต่ MQTT offline — ESP32 จะซิงค์ครั้งถัดไป');
+        } else {
+          toast.success(`ส่งคำสั่ง${type === 'main' ? 'ไฟส่องสว่าง' : type === 'green' ? 'LED เขียว' : type === 'red' ? 'LED แดง' : type === 'auto_status' ? 'โหมดสถานะออโต้' : 'โหมดสว่างออโต้'}สำเร็จ`);
+        }
+      } else {
+        // ถ้า error ให้ revert UI กลับ
+        updateBin(bin);
+        toast.error(result.error || 'ไม่สามารถส่งคำสั่งได้');
+      }
+    } catch (error) {
+      console.error('Failed to toggle light', error);
+      updateBin(bin); // revert
+      toast.error('ไม่สามารถส่งคำสั่งได้');
     }
   };
 
@@ -373,7 +455,16 @@ export default function BinDetailModal({
                 {isEditMode ? 'แก้ไขถังขยะ' : bin.name}
               </h2>
               {!isEditMode && (
-                <p className="text-yellow-100 text-sm mt-1">Client ID: {bin.clientId}</p>
+                <div className="flex items-center gap-3 mt-1">
+
+                  <div className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium shadow-sm ${isOnline ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
+                    {isOnline ? (
+                      <><Wifi className="w-3 h-3" /> ออนไลน์</>
+                    ) : (
+                      <><WifiOff className="w-3 h-3" /> ออฟไลน์</>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
 
@@ -585,8 +676,12 @@ export default function BinDetailModal({
                         />
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-500">ปริมาณ</span>
+                        <span className="text-gray-500">เปอร์เซ็นต์ขยะ</span>
                         <span className="font-bold text-gray-800">{bin.wasteLevel.toFixed(1)}%</span>
+                      </div>
+                      <div className="flex justify-between text-xs text-gray-500 border-t pt-1 mt-1">
+                        <span>ระยะเซนเซอร์วัดได้ล่าสุด</span>
+                        <span>{((100 - bin.wasteLevel) / 100 * (bin.maxDistance - 2) + 2).toFixed(1)} ซม.</span>
                       </div>
                     </div>
                   </div>
@@ -596,11 +691,66 @@ export default function BinDetailModal({
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Lightbulb className={`w-5 h-5 ${bin.lightStatus ? 'text-yellow-400' : 'text-gray-400'}`} />
-                        <span className="font-medium text-gray-800">สถานะไฟ LED</span>
+                        <span className="font-medium text-gray-800">ไฟส่องสว่างหลัก</span>
                       </div>
-                      <Badge variant={bin.lightStatus ? 'default' : 'secondary'}>
-                        {bin.lightStatus ? 'เปิด' : 'ปิด'}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={bin.lightStatus ? 'default' : 'secondary'}>
+                          {bin.lightStatus ? 'เปิด' : 'ปิด'}
+                        </Badge>
+                        <Switch checked={bin.lightStatus} onCheckedChange={() => toggleLight('main')} disabled={!isOnline || bin.autoLight} />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between mt-3">
+                      <div className="flex items-center gap-2">
+                        <Lightbulb className={`w-5 h-5 ${bin.autoLight ? 'text-blue-500' : 'text-gray-400'}`} />
+                        <span className="font-medium text-gray-800">โหมดสว่างอัตโนมัติ (วัดแสง)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={bin.autoLight ? 'default' : 'secondary'} className={bin.autoLight ? 'bg-blue-500' : ''}>
+                          {bin.autoLight ? 'เปิด' : 'ปิด'}
+                        </Badge>
+                        <Switch checked={bin.autoLight} onCheckedChange={() => toggleLight('auto')} disabled={!isOnline} />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between mt-3">
+                      <div className="flex items-center gap-2">
+                        <Lightbulb className={`w-5 h-5 ${bin.autoStatus ? 'text-blue-500' : 'text-gray-400'}`} />
+                        <span className="font-medium text-gray-800">โหมดไฟสถานะอัตโนมัติ (เต็ม/ว่าง)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={bin.autoStatus ? 'default' : 'secondary'} className={bin.autoStatus ? 'bg-blue-500' : ''}>
+                          {bin.autoStatus ? 'เปิด' : 'ปิด'}
+                        </Badge>
+                        <Switch checked={bin.autoStatus} onCheckedChange={() => toggleLight('auto_status')} disabled={!isOnline} />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between mt-3">
+                      <div className="flex items-center gap-2">
+                        <Lightbulb className={`w-5 h-5 ${bin.ledGreen ? 'text-green-500' : 'text-gray-400'}`} />
+                        <span className="font-medium text-gray-800">สถานะ LED สีเขียว</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={bin.ledGreen ? 'default' : 'secondary'} className={bin.ledGreen ? 'bg-green-500' : ''}>
+                          {bin.ledGreen ? 'เปิด' : 'ปิด'}
+                        </Badge>
+                        <Switch checked={bin.ledGreen} onCheckedChange={() => toggleLight('green')} disabled={!isOnline || bin.autoStatus} />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between mt-3">
+                      <div className="flex items-center gap-2">
+                        <Lightbulb className={`w-5 h-5 ${bin.ledRed ? 'text-red-500' : 'text-gray-400'}`} />
+                        <span className="font-medium text-gray-800">สถานะ LED สีแดง</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={bin.ledRed ? 'destructive' : 'secondary'}>
+                          {bin.ledRed ? 'เปิด' : 'ปิด'}
+                        </Badge>
+                        <Switch checked={bin.ledRed} onCheckedChange={() => toggleLight('red')} disabled={!isOnline || bin.autoStatus} />
+                      </div>
                     </div>
                     <div className="mt-3 flex justify-between text-sm">
                       <span className="text-gray-500">ระดับแสง</span>
@@ -634,7 +784,7 @@ export default function BinDetailModal({
                     </div>
                   )}
 
-                  {/* Capacity Info */}
+                  {/* Capacity Info & Creator */}
                   <div className="bg-gray-50 rounded-xl p-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
@@ -644,6 +794,10 @@ export default function BinDetailModal({
                       <div>
                         <p className="text-xs text-gray-500 mb-1">ความสูงถัง</p>
                         <p className="font-medium text-gray-800">{bin.maxDistance} ซม.</p>
+                      </div>
+                      <div className="col-span-2 mt-2 pt-2 border-t border-gray-200">
+                        <p className="text-xs text-gray-500 mb-1">ผู้สร้างข้อมูล</p>
+                        <p className="font-medium text-gray-800">{bin.createdBy || 'Unknown'} {bin.createdByRole && `(${bin.createdByRole})`}</p>
                       </div>
                     </div>
                   </div>
@@ -689,7 +843,7 @@ export default function BinDetailModal({
                     >
                       <Edit className="w-4 h-4" />
                     </Button>
-                    {onDelete && (
+                    {onDelete && canDelete && (
                       <Button
                         variant="outline"
                         onClick={() => onDelete(bin)}
@@ -699,7 +853,7 @@ export default function BinDetailModal({
                       </Button>
                     )}
                   </div>
-                  
+
                   {!userLocation && (
                     <p className="text-xs text-center text-gray-400">
                       กรุณาอนุญาตให้เข้าถึงตำแหน่งของคุณเพื่อใช้งานการนำทาง
@@ -710,7 +864,8 @@ export default function BinDetailModal({
             </div>
           </motion.div>
         </>
-      )}
-    </AnimatePresence>
+      )
+      }
+    </AnimatePresence >
   );
 }

@@ -30,8 +30,12 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files — ห้าม commit ขึ้น Git เด็ดขาด
+.env
 .env*
+
+# ESP32 secrets — ห้าม commit ขึ้น Git เด็ดขาด
+secrets.h
 
 # vercel
 .vercel
@@ -40,12 +44,14 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 local-*
+
+# tools
 .claude
 .z-ai-config
 dev.log
 test
 prompt
-
 server.log
+
 # Skills directory
 /skills/

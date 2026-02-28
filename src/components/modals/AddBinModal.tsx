@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Loader2, MapPin, Move } from 'lucide-react';
+import { X, Loader2, MapPin, Key } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,7 +15,6 @@ interface AddBinModalProps {
 }
 
 export interface AddBinData {
-  clientId: string;
   name: string;
   address: string;
   district?: string;
@@ -32,7 +31,6 @@ export default function AddBinModal({ isOpen, onClose, onSubmit }: AddBinModalPr
   const { newBinLocation, userLocation } = useAppStore();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState<AddBinData>({
-    clientId: '',
     name: '',
     address: '',
     district: '',
@@ -68,7 +66,6 @@ export default function AddBinModal({ isOpen, onClose, onSubmit }: AddBinModalPr
       await onSubmit(formData);
       // Reset form
       setFormData({
-        clientId: '',
         name: '',
         address: '',
         district: '',
@@ -124,6 +121,14 @@ export default function AddBinModal({ isOpen, onClose, onSubmit }: AddBinModalPr
               </button>
             </div>
 
+            {/* API Key info hint */}
+            <div className="bg-blue-50 px-6 py-3 flex items-center gap-2 border-b border-blue-100">
+              <Key className="w-5 h-5 text-blue-600" />
+              <span className="text-sm text-blue-800">
+                API Key จะถูกสร้างอัตโนมัติเมื่อเพิ่มถังขยะ
+              </span>
+            </div>
+
             {/* Location hint */}
             <div className="bg-yellow-50 px-6 py-3 flex items-center gap-2 border-b border-yellow-100">
               <MapPin className="w-5 h-5 text-yellow-600" />
@@ -134,23 +139,6 @@ export default function AddBinModal({ isOpen, onClose, onSubmit }: AddBinModalPr
 
             {/* Form */}
             <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
-              {/* Client ID */}
-              <div>
-                <Label htmlFor="clientId" className="text-sm font-medium">
-                  Client ID <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="clientId"
-                  name="clientId"
-                  value={formData.clientId}
-                  onChange={handleInputChange}
-                  placeholder="เช่น BIN001"
-                  required
-                  className="mt-1"
-                  disabled={isLoading}
-                />
-              </div>
-
               {/* Bin Name */}
               <div>
                 <Label htmlFor="name" className="text-sm font-medium">

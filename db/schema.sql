@@ -9,10 +9,21 @@ DROP TABLE IF EXISTS "SensorHistory" CASCADE;
 DROP TABLE IF EXISTS bins CASCADE;
 DROP TABLE IF EXISTS "Bin" CASCADE;
 
+-- Function สำหรับ generate API Key แบบ random
+CREATE OR REPLACE FUNCTION generate_api_key()
+RETURNS TEXT AS $$
+DECLARE
+  key TEXT;
+BEGIN
+  key := 'swm_' || encode(gen_random_bytes(24), 'hex');
+  RETURN key;
+END;
+$$ LANGUAGE plpgsql;
+
 -- ตาราง bins (ถังขยะ)
 CREATE TABLE bins (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  client_id     TEXT UNIQUE NOT NULL,
+  api_key       TEXT UNIQUE NOT NULL DEFAULT generate_api_key(),
   name          TEXT NOT NULL,
   address       TEXT NOT NULL,
   district      TEXT,
@@ -28,6 +39,8 @@ CREATE TABLE bins (
   waste_level   FLOAT NOT NULL DEFAULT 0,
   light_level   FLOAT NOT NULL DEFAULT 0,
   light_status  BOOLEAN NOT NULL DEFAULT false,
+  led_green     BOOLEAN NOT NULL DEFAULT false,
+  led_red       BOOLEAN NOT NULL DEFAULT false,
   temperature   FLOAT,
   humidity      FLOAT,
 
@@ -45,13 +58,15 @@ CREATE TABLE sensor_history (
   waste_level  FLOAT NOT NULL,
   light_level  FLOAT NOT NULL,
   light_status BOOLEAN NOT NULL,
+  led_green    BOOLEAN NOT NULL DEFAULT false,
+  led_red      BOOLEAN NOT NULL DEFAULT false,
   temperature  FLOAT,
   humidity     FLOAT,
   recorded_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Index สำหรับ query เร็วขึ้น
-CREATE INDEX idx_bins_client_id ON bins(client_id);
+CREATE INDEX idx_bins_api_key ON bins(api_key);
 CREATE INDEX idx_bins_is_active ON bins(is_active);
 CREATE INDEX idx_sensor_history_bin_id ON sensor_history(bin_id);
 CREATE INDEX idx_sensor_history_recorded_at ON sensor_history(recorded_at DESC);

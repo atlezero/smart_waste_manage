@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase';
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
 // GET - ดึงข้อมูลถังขยะทั้งหมด
 export async function GET(request: NextRequest) {
@@ -8,7 +10,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search');
     const status = searchParams.get('status');
 
-    let query = supabaseServer
+    const query = supabaseServer
       .from('bins')
       .select(`
         *,
@@ -18,6 +20,8 @@ export async function GET(request: NextRequest) {
           waste_level,
           light_level,
           light_status,
+          led_green,
+          led_red,
           temperature,
           humidity,
           recorded_at
@@ -46,7 +50,6 @@ export async function GET(request: NextRequest) {
     if (search) {
       const searchLower = search.toLowerCase();
       result = result.filter(bin =>
-        bin.client_id?.toLowerCase().includes(searchLower) ||
         bin.name?.toLowerCase().includes(searchLower) ||
         bin.address?.toLowerCase().includes(searchLower) ||
         bin.district?.toLowerCase().includes(searchLower) ||
@@ -82,12 +85,11 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - เพิ่มถังขยะใหม่
+// POST - เพิ่มถังขยะใหม่ (auto-generate API Key)
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const {
-      clientId,
       name,
       address,
       district,
@@ -100,24 +102,14 @@ export async function POST(request: NextRequest) {
       maxDistance,
     } = body;
 
-    // ตรวจสอบว่า clientId ซ้ำหรือไม่
-    const { data: existing } = await supabaseServer
-      .from('bins')
-      .select('id')
-      .eq('client_id', clientId)
-      .single();
+    const session = await getServerSession(authOptions);
+    const creatorName = session?.user?.name || 'Unknown';
+    const creatorRole = session?.user?.email?.includes('admin') ? 'Admin' : 'User';
 
-    if (existing) {
-      return NextResponse.json(
-        { success: false, error: 'Client ID already exists' },
-        { status: 400 }
-      );
-    }
-
+    // API Key จะ auto-generate จาก database default
     const { data: bin, error } = await supabaseServer
       .from('bins')
       .insert({
-        client_id: clientId,
         name,
         address,
         district: district || null,
@@ -128,6 +120,8 @@ export async function POST(request: NextRequest) {
         longitude: parseFloat(longitude),
         capacity: capacity ? parseFloat(capacity) : 100,
         max_distance: maxDistance ? parseFloat(maxDistance) : 100,
+        created_by: creatorName,
+        created_by_role: creatorRole,
       })
       .select()
       .single();
@@ -149,7 +143,7 @@ export async function POST(request: NextRequest) {
 function mapBinToCamel(bin: any) {
   return {
     id: bin.id,
-    clientId: bin.client_id,
+    apiKey: bin.api_key,
     name: bin.name,
     address: bin.address,
     district: bin.district,
@@ -163,12 +157,18 @@ function mapBinToCamel(bin: any) {
     wasteLevel: bin.waste_level,
     lightLevel: bin.light_level,
     lightStatus: bin.light_status,
+    autoLight: bin.auto_light !== undefined ? bin.auto_light : true,
+    autoStatus: bin.auto_status !== undefined ? bin.auto_status : true,
+    ledGreen: bin.led_green,
+    ledRed: bin.led_red,
     temperature: bin.temperature,
     humidity: bin.humidity,
     isActive: bin.is_active,
     lastUpdate: bin.last_update,
     createdAt: bin.created_at,
     updatedAt: bin.updated_at,
+    createdBy: bin.created_by,
+    createdByRole: bin.created_by_role,
     sensorHistory: bin.sensor_history?.map(mapHistoryToCamel) ?? [],
   };
 }
@@ -181,6 +181,8 @@ function mapHistoryToCamel(h: any) {
     wasteLevel: h.waste_level,
     lightLevel: h.light_level,
     lightStatus: h.light_status,
+    ledGreen: h.led_green,
+    ledRed: h.led_red,
     temperature: h.temperature,
     humidity: h.humidity,
     recordedAt: h.recorded_at,

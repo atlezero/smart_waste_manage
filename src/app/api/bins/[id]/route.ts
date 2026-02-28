@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase';
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
 // GET - ดึงข้อมูลถังขยะตาม ID
 export async function GET(
@@ -19,6 +21,8 @@ export async function GET(
           waste_level,
           light_level,
           light_status,
+          led_green,
+          led_red,
           temperature,
           humidity,
           recorded_at
@@ -57,7 +61,6 @@ export async function PUT(
 
     // แปลง camelCase → snake_case
     const updateData: Record<string, unknown> = {};
-    if (body.clientId !== undefined) updateData.client_id = body.clientId;
     if (body.name !== undefined) updateData.name = body.name;
     if (body.address !== undefined) updateData.address = body.address;
     if (body.district !== undefined) updateData.district = body.district;
@@ -69,6 +72,10 @@ export async function PUT(
     if (body.capacity !== undefined) updateData.capacity = parseFloat(body.capacity);
     if (body.maxDistance !== undefined) updateData.max_distance = parseFloat(body.maxDistance);
     if (body.isActive !== undefined) updateData.is_active = body.isActive;
+    if (body.lightStatus !== undefined) updateData.light_status = body.lightStatus;
+    if (body.autoLight !== undefined) updateData.auto_light = body.autoLight;
+    if (body.ledGreen !== undefined) updateData.led_green = body.ledGreen;
+    if (body.ledRed !== undefined) updateData.led_red = body.ledRed;
 
     const { data: bin, error } = await supabaseServer
       .from('bins')
@@ -96,6 +103,31 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+    const session = await getServerSession(authOptions);
+    const userName = session?.user?.name || 'Unknown';
+    const isAdmin = session?.user?.email?.includes('admin');
+
+    // ตรวจสอบข้อมูลถังขยะว่ามีอยู่จริงหรือไม่ และใครเป็นคนสร้าง
+    const { data: existingBin, error: fetchError } = await supabaseServer
+      .from('bins')
+      .select('created_by')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !existingBin) {
+      return NextResponse.json(
+        { success: false, error: 'Bin not found' },
+        { status: 404 }
+      );
+    }
+
+    // ตรวจสอบสิทธิ์ว่าใช่คนสร้าง หรือแอดมินหรือไม่
+    if (!isAdmin && existingBin.created_by !== userName) {
+      return NextResponse.json(
+        { success: false, error: 'ไม่มีสิทธิ์: เฉพาะผู้สร้างหรือ Admin เท่านั้นที่สามารถลบได้' },
+        { status: 403 }
+      );
+    }
 
     const { error } = await supabaseServer
       .from('bins')
@@ -119,7 +151,7 @@ export async function DELETE(
 function mapBinToCamel(bin: any) {
   return {
     id: bin.id,
-    clientId: bin.client_id,
+    apiKey: bin.api_key,
     name: bin.name,
     address: bin.address,
     district: bin.district,
@@ -133,12 +165,17 @@ function mapBinToCamel(bin: any) {
     wasteLevel: bin.waste_level,
     lightLevel: bin.light_level,
     lightStatus: bin.light_status,
+    autoLight: bin.auto_light !== undefined ? bin.auto_light : true,
+    ledGreen: bin.led_green,
+    ledRed: bin.led_red,
     temperature: bin.temperature,
     humidity: bin.humidity,
     isActive: bin.is_active,
     lastUpdate: bin.last_update,
     createdAt: bin.created_at,
     updatedAt: bin.updated_at,
+    createdBy: bin.created_by,
+    createdByRole: bin.created_by_role,
     sensorHistory: bin.sensor_history?.map(mapHistoryToCamel) ?? [],
   };
 }
@@ -151,6 +188,8 @@ function mapHistoryToCamel(h: any) {
     wasteLevel: h.waste_level,
     lightLevel: h.light_level,
     lightStatus: h.light_status,
+    ledGreen: h.led_green,
+    ledRed: h.led_red,
     temperature: h.temperature,
     humidity: h.humidity,
     recordedAt: h.recorded_at,

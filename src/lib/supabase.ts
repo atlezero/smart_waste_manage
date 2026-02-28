@@ -12,7 +12,7 @@ export const supabaseServer = createClient(supabaseUrl, supabaseAnonKey);
 // Types สำหรับ database
 export interface BinRow {
     id: string;
-    client_id: string;
+    api_key: string;
     name: string;
     address: string;
     district: string | null;
@@ -26,12 +26,16 @@ export interface BinRow {
     waste_level: number;
     light_level: number;
     light_status: boolean;
+    auto_light: boolean;
+    auto_status: boolean;
     temperature: number | null;
     humidity: number | null;
     is_active: boolean;
     last_update: string;
     created_at: string;
     updated_at: string;
+    created_by?: string;
+    created_by_role?: string;
 }
 
 export interface SensorHistoryRow {

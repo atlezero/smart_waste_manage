@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import dynamic from 'next/dynamic';
 import { useAppStore, Bin } from '@/store/app-store';
 import { toast } from 'sonner';
+import { useWebSocket } from '@/hooks/useWebSocket';
 
 // Import components
 import Header from '@/components/Header';
@@ -52,7 +53,9 @@ export default function Home() {
   const watchIdRef = useRef<number | null>(null);
   const lastAddressRef = useRef<string>('');
   const addressFetchTimeRef = useRef<number>(0);
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // WebSocket for real-time updates from server
+  useWebSocket();
 
   // Fetch bins (with optional silent mode)
   const fetchBins = useCallback(async (silent: boolean = false) => {
@@ -84,7 +87,7 @@ export default function Home() {
     if (now - addressFetchTimeRef.current < 30000) {
       return lastAddressRef.current || 'ไม่ทราบที่อยู่';
     }
-    
+
     try {
       addressFetchTimeRef.current = now;
       const response = await fetch(`/api/geocode/reverse?lat=${latitude}&lon=${longitude}`);
@@ -113,24 +116,24 @@ export default function Home() {
     watchIdRef.current = navigator.geolocation.watchPosition(
       async (position) => {
         const { latitude, longitude, heading, speed, accuracy } = position.coords;
-        
+
         console.log('Location update:', { latitude, longitude, heading, accuracy });
-        
+
         // Validate coordinates
         if (isNaN(latitude) || isNaN(longitude)) return;
-        
+
         // Get address (throttled internally)
         const address = await getAddressFromCoords(latitude, longitude);
-        
+
         const newLocation = {
           latitude,
           longitude,
           address,
           heading: heading ?? userLocation?.heading ?? 0,
         };
-        
+
         setUserLocation(newLocation);
-        
+
         // Update map center on first location
         if (!hasInitialized) {
           setMapCenter([latitude, longitude]);
@@ -164,20 +167,9 @@ export default function Home() {
     };
   }, []); // Run once on mount
 
-  // Fetch bins on mount
+  // Fetch bins on mount (initial load only, then WebSocket handles updates)
   useEffect(() => {
     fetchBins();
-    
-    // Start polling for real-time updates (every 5 seconds)
-    pollIntervalRef.current = setInterval(() => {
-      fetchBins(true); // silent mode - no loading indicator
-    }, 5000);
-    
-    return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-      }
-    };
   }, [fetchBins]);
 
   // Re-fetch bins when switching to map view
@@ -202,7 +194,6 @@ export default function Home() {
 
   // Handle add bin
   const handleAddBin = async (data: {
-    clientId: string;
     name: string;
     address: string;
     district?: string;
@@ -225,7 +216,7 @@ export default function Home() {
         // Add bin to store
         const newBin: Bin = {
           id: result.data.id,
-          clientId: result.data.clientId,
+          apiKey: result.data.apiKey,
           name: result.data.name,
           address: result.data.address,
           district: result.data.district,
@@ -239,17 +230,23 @@ export default function Home() {
           wasteLevel: 0,
           lightLevel: 0,
           lightStatus: false,
+          autoLight: true,
+          autoStatus: true,
+          ledGreen: false,
+          ledRed: false,
           temperature: null,
           humidity: null,
           isActive: true,
           lastUpdate: new Date().toISOString(),
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
+          createdBy: result.data.createdBy,
+          createdByRole: result.data.createdByRole,
         };
-        
+
         addBin(newBin);
-        toast.success('เพิ่มถังขยะสำเร็จ');
-        
+        toast.success(`เพิ่มถังขยะสำเร็จ!`);
+
         // Exit add bin mode
         setIsAddingBin(false);
         setNewBinLocation(null);
@@ -265,7 +262,7 @@ export default function Home() {
   // Handle delete bin
   const handleDeleteBin = async (bin: Bin) => {
     if (!confirm(`ต้องการลบถังขยะ "${bin.name}" ใช่หรือไม่?`)) return;
-    
+
     try {
       const response = await fetch(`/api/bins/${bin.id}`, {
         method: 'DELETE',
@@ -279,7 +276,7 @@ export default function Home() {
       }
     } catch (error) {
       console.error('Failed to delete bin:', error);
-      toast.error('ไม่สามารถลบถังขยะได้');
+      toast.error('ไม่สามารถลบถังขยะได้ หรือคุณไม่มีสิทธิ์ลบถังขยะนี้');
     }
   };
 
