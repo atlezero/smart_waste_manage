@@ -410,6 +410,75 @@ export default function BinDetailModal({
     }
   };
 
+  const [isResettingWifi, setIsResettingWifi] = useState(false);
+
+  const resetWifi = async () => {
+    if (!bin) return;
+    if (!isOnline) {
+      toast.error('ESP32 ออฟไลน์ — ไม่สามารถส่งคำสั่งได้');
+      return;
+    }
+
+    const confirmed = window.confirm(`ยืนยันการ Reset WiFi ของ "${bin.name}"?\nESP32 จะรีสตาร์ทและเชื่อมต่อ WiFi ใหม่`);
+    if (!confirmed) return;
+
+    setIsResettingWifi(true);
+    try {
+      const response = await fetch('/api/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ binId: bin.id, command: { reset_wifi: true } }),
+      });
+      const result = await response.json();
+      if (result.success) {
+        toast.success('ส่งคำสั่ง Reset WiFi สำเร็จ — ESP32 กำลังรีสตาร์ท...');
+      } else {
+        toast.error(result.error || 'ไม่สามารถส่งคำสั่งได้');
+      }
+    } catch {
+      toast.error('ไม่สามารถส่งคำสั่งได้');
+    } finally {
+      setIsResettingWifi(false);
+    }
+  };
+
+  const [fullDistanceInput, setFullDistanceInput] = useState<string>('');
+  const [isSendingFullDistance, setIsSendingFullDistance] = useState(false);
+
+  const sendFullDistance = async () => {
+    if (!bin) return;
+    const val = parseInt(fullDistanceInput);
+    if (isNaN(val) || val < 1 || val > 400) {
+      toast.error('กรอกระยะ 1–400 ซม.');
+      return;
+    }
+    if (!isOnline) {
+      toast.error('ESP32 ออฟไลน์ — ไม่สามารถส่งคำสั่งได้');
+      return;
+    }
+    setIsSendingFullDistance(true);
+    try {
+      const response = await fetch('/api/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ binId: bin.id, command: { full_distance: val } }),
+      });
+      const result = await response.json();
+      if (result.success) {
+        toast.success(`ตั้งระยะตรวจจับเต็ม ${val} ซม. สำเร็จ`);
+        setFullDistanceInput('');
+        // อัพเดต store ด้วย (maxDistance เปลี่ยนไป)
+        updateBin({ ...bin, maxDistance: val });
+      } else {
+        toast.error(result.error || 'ไม่สามารถส่งคำสั่งได้');
+      }
+    } catch {
+      toast.error('ไม่สามารถส่งคำสั่งได้');
+    } finally {
+      setIsSendingFullDistance(false);
+    }
+  };
+
   const formatDateTime = (dateString: string) => {
     return new Date(dateString).toLocaleString('th-TH', {
       year: 'numeric',
@@ -755,6 +824,67 @@ export default function BinDetailModal({
                     <div className="mt-3 flex justify-between text-sm">
                       <span className="text-gray-500">ระดับแสง</span>
                       <span className="font-medium text-gray-800">{bin.lightLevel.toFixed(1)} lux</span>
+                    </div>
+                  </div>
+
+                  {/* Reset WiFi */}
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <WifiOff className="w-5 h-5 text-orange-500" />
+                        <div>
+                          <span className="font-medium text-gray-800">Reset WiFi ESP32</span>
+                          <p className="text-xs text-gray-500 mt-0.5">ESP32 จะรีสตาร์ทและเชื่อมต่อ WiFi ใหม่</p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={resetWifi}
+                        disabled={!isOnline || isResettingWifi}
+                        className="border-orange-300 text-orange-600 hover:bg-orange-50 disabled:opacity-40"
+                      >
+                        {isResettingWifi ? (
+                          <><Loader2 className="w-4 h-4 mr-1 animate-spin" />กำลังส่ง...</>
+                        ) : (
+                          <><Wifi className="w-4 h-4 mr-1" />Reset WiFi</>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                  {/* Full Distance */}
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Trash2 className="w-5 h-5 text-blue-500" />
+                      <div>
+                        <span className="font-medium text-gray-800">ระยะตรวจจับถังเต็ม</span>
+                        <p className="text-xs text-gray-500 mt-0.5">ปัจจุบัน: {bin.maxDistance} ซม.</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={400}
+                        placeholder={`ระยะใหม่ (ซม.) ปัจจุบัน ${bin.maxDistance}`}
+                        value={fullDistanceInput}
+                        onChange={(e) => setFullDistanceInput(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && sendFullDistance()}
+                        className="flex-1"
+                        disabled={!isOnline}
+                      />
+                      <Button
+                        size="sm"
+                        onClick={sendFullDistance}
+                        disabled={!isOnline || isSendingFullDistance || !fullDistanceInput}
+                        className="bg-blue-500 hover:bg-blue-600 text-white"
+                      >
+                        {isSendingFullDistance ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Save className="w-4 h-4" />
+                        )}
+                      </Button>
                     </div>
                   </div>
 

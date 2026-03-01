@@ -3,54 +3,52 @@
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
+#include <WiFiManager.h>
 #include "secrets.h"
 
-// --- ตั้งค่า WiFi ---
-const char* ssid = SECRET_SSID;
-const char* password = SECRET_PASS;
-
-const char* mqtt_server = SECRET_MQTT_SERVER; 
+const char* mqtt_server = SECRET_MQTT_SERVER;
 const int mqtt_port = SECRET_MQTT_PORT;
-
 const char* mqtt_user = SECRET_MQTT_USER;
 const char* mqtt_pass = SECRET_MQTT_PASS;
-
-const char* telegram_token = SECRET_TELEGRAM_TOKEN;
-const char* telegram_chat_id = SECRET_TELEGRAM_CHAT_ID;
-
 const char* API_KEY = SECRET_API_KEY;
 
-// --- กำหนดขา PIN ---
 #define TRIG_PIN 5
 #define ECHO_PIN 18
 #define LDR_PIN 34
 #define LIGHT_PIN 2
 #define RED_STATUS_PIN 4
 #define GREEN_STATUS_PIN 15
+#define BUZZER_PIN 22  // ✅ ใช้ Passive Buzzer
 
 unsigned long previousMillis = 0;
-const long interval = 2000; 
+unsigned long lastMqttRetry = 0;
+unsigned long lastWifiBlink = 0;
+unsigned long startConnTime = 0;
+unsigned long lastHourlyRetry = 0;
+
+const long interval = 2000;
+const long mqttRetryInterval = 5000;
+const unsigned long hourlyInterval = 3600000;
+const unsigned long connTimeout = 10000;
 
 bool isFull = false;
-const int FULL_DISTANCE = 5;
+// ค่า default ก่อนเว็บส่งค่ามา (ปรับได้ผ่าน MQTT command)
+int fullDistance = 5;   // ระยะ buzzer ดัง เมื่อถังเต็มสุด (cm) — default เมื่อ boot และก่อน MQTT connect
+int binHeight = 30;      // ความสูงถัง (cm) — ใช้คำนวณ % ขยะ — default เมื่อ boot และก่อน MQTT connect
+const int RED_THRESHOLD = 80; // LED แดงติดเมื่อขยะ >= 80%
 bool autoLightMode = true;
 bool autoStatusMode = true;
+bool wifiAttempting = true;
+bool connectionFailed = false;
+bool shouldResetWifi = false;
 
-bool isLightOn = false;
-bool isRedOn = false;
-bool isGreenOn = false;
-
-String baseTopic = "waste_truck/";
 String deviceTopic;
-
 WiFiClientSecure espClient;
 PubSubClient client(espClient);
 
-void setup_wifi();
-void reconnect();
-long readUltrasonic();
 void callback(char* topic, byte* payload, unsigned int length);
-void sendTelegram(String text);
+bool parseBoolOrString(JsonVariant val);
+void startWifiManager();
 
 void setup() {
   Serial.begin(115200);
@@ -60,42 +58,164 @@ void setup() {
   pinMode(LIGHT_PIN, OUTPUT);
   pinMode(RED_STATUS_PIN, OUTPUT);
   pinMode(GREEN_STATUS_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
   pinMode(LDR_PIN, INPUT);
 
-  setup_wifi();
+  Serial.println("\nSystem Booting... Starting WiFiManager");
+  startWifiManager();
 
-  deviceTopic = baseTopic + String(API_KEY);
-  Serial.println("Device Topic: " + deviceTopic);
-
-  espClient.setInsecure(); 
-  client.setServer(mqtt_server, mqtt_port);
+  startConnTime = millis();
+  deviceTopic = "waste_truck/" + String(SECRET_API_KEY);
+  espClient.setInsecure();
+  client.setServer(SECRET_MQTT_SERVER, SECRET_MQTT_PORT);
   client.setCallback(callback);
+  
+  // ✅ เพิ่ม Buffer Size ตรงนี้ เพื่อให้รองรับการส่ง JSON ก้อนใหญ่!
   client.setBufferSize(512);
 }
 
-void setup_wifi() {
-  Serial.print("Connecting to WiFi: ");
-  Serial.println(ssid);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
+void startWifiManager() {
+  WiFiManager wm;
+  wm.setConfigPortalTimeout(120);
+
+  digitalWrite(RED_STATUS_PIN, HIGH);
+  digitalWrite(GREEN_STATUS_PIN, HIGH);
+
+  if (!wm.autoConnect("WasteTruck_Config")) {
+    Serial.println("WiFi Config Timeout - Running in Edge Mode");
+    wifiAttempting = false;
+    connectionFailed = true;
+    digitalWrite(RED_STATUS_PIN, LOW);
+    digitalWrite(GREEN_STATUS_PIN, LOW);
+  } else {
+    wifiAttempting = false;
+    connectionFailed = false;
+    digitalWrite(RED_STATUS_PIN, LOW);
+    tone(BUZZER_PIN, 1000); delay(2000); noTone(BUZZER_PIN);
+    digitalWrite(GREEN_STATUS_PIN, HIGH);
+    Serial.println("WiFi Connected Successfully!");
   }
-  Serial.println("\nWiFi connected!");
 }
 
-void reconnect() {
-  while (!client.connected()) {
-    Serial.print("Attempting MQTT connection...");
-    if (client.connect(API_KEY, mqtt_user, mqtt_pass)) {
-      Serial.println("connected");
-      String cmdTopic = deviceTopic + "/cmd";
-      client.subscribe(cmdTopic.c_str());
+void handleConnectivity() {
+  unsigned long currentMillis = millis();
+
+  if (shouldResetWifi) {
+    shouldResetWifi = false;
+    Serial.println("=> Resetting WiFi... Opening AP: WasteTruck_Config");
+    client.disconnect();
+    WiFiManager wm;
+    wm.resetSettings();
+    delay(500);
+    startWifiManager();
+    lastMqttRetry = 0;
+    return;
+  }
+
+  if (connectionFailed && (currentMillis - lastHourlyRetry > hourlyInterval)) {
+    lastHourlyRetry = currentMillis;
+    wifiAttempting = true;
+    connectionFailed = false;
+    startConnTime = currentMillis;
+    WiFi.begin();
+    Serial.println("Hourly Retry: Attempting to reconnect WiFi...");
+  }
+
+  if (wifiAttempting) {
+    if (WiFi.status() != WL_CONNECTED) {
+      if (currentMillis - lastWifiBlink > 250) {
+        lastWifiBlink = currentMillis;
+        digitalWrite(GREEN_STATUS_PIN, !digitalRead(GREEN_STATUS_PIN));
+      }
+      if (currentMillis - startConnTime > connTimeout) {
+        wifiAttempting = false;
+        connectionFailed = true;
+        digitalWrite(GREEN_STATUS_PIN, LOW);
+        Serial.println("WiFi Timeout - Back to Edge Mode");
+      }
     } else {
-      Serial.print("failed, rc=");
-      Serial.print(client.state());
-      delay(5000);
+      wifiAttempting = false;
+      connectionFailed = false;
+      tone(BUZZER_PIN, 1000); delay(2000); noTone(BUZZER_PIN);
+      digitalWrite(GREEN_STATUS_PIN, HIGH);
+      Serial.println("Reconnected Successfully!");
+    }
+  }
+
+  if (WiFi.status() == WL_CONNECTED && !client.connected()) {
+    if (currentMillis - lastMqttRetry > mqttRetryInterval) {
+      lastMqttRetry = currentMillis;
+      if (client.connect(SECRET_API_KEY, SECRET_MQTT_USER, SECRET_MQTT_PASS)) {
+        client.subscribe((deviceTopic + "/cmd").c_str());
+        Serial.println("MQTT Connected and Subscribed!");
+      }
+    }
+  }
+}
+
+long readUltrasonic() {
+  digitalWrite(TRIG_PIN, LOW); delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH); delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+  long duration = pulseIn(ECHO_PIN, HIGH, 25000);
+  return (duration == 0) ? 400 : duration * 0.034 / 2;
+}
+
+void loop() {
+  handleConnectivity(); 
+  client.loop();
+
+  unsigned long currentMillis = millis();
+  if (currentMillis - previousMillis >= interval) {
+    previousMillis = currentMillis;
+
+    long distance = readUltrasonic();
+    int ldrValue = analogRead(LDR_PIN);
+
+    // คำนวณ % ขยะจากความสูงถัง
+    int effectiveHeight = max(binHeight, 1);
+    long clampedDist = min(distance, (long)effectiveHeight);
+    int wastePercent = (int)(((effectiveHeight - clampedDist) * 100.0) / effectiveHeight);
+    wastePercent = constrain(wastePercent, 0, 100);
+
+    if (autoLightMode) {
+      digitalWrite(LIGHT_PIN, (ldrValue < 200) ? HIGH : LOW);
+    }
+
+    // buzzer: ติดเมื่อระยะน้อยกว่า fullDistance
+    if (distance <= fullDistance) {
+      if (!isFull) {
+        isFull = true;
+        tone(BUZZER_PIN, 1000); delay(150); noTone(BUZZER_PIN);
+      }
+    } else {
+      isFull = false;
+    }
+
+    // LED แดง = ขยะ >= 80%, LED เขียว = ขยะ < 80%
+    if (autoStatusMode && !wifiAttempting) {
+      bool redOn = (wastePercent >= RED_THRESHOLD);
+      digitalWrite(RED_STATUS_PIN, redOn ? HIGH : LOW);
+      digitalWrite(GREEN_STATUS_PIN, redOn ? LOW : HIGH);
+    }
+
+    if (client.connected()) {
+      StaticJsonDocument<512> doc;
+      doc["distance_cm"] = distance;
+      doc["waste_percent"] = wastePercent;
+      doc["light_level"] = ldrValue;
+      doc["light_status"] = (digitalRead(LIGHT_PIN) == HIGH) ? "ON" : "OFF";
+      doc["red_led"] = (digitalRead(RED_STATUS_PIN) == HIGH) ? "ON" : "OFF";
+      doc["green_led"] = (digitalRead(GREEN_STATUS_PIN) == HIGH) ? "ON" : "OFF";
+      doc["is_full"] = isFull;
+      doc["full_distance"] = fullDistance;
+      doc["bin_height"] = binHeight;
+      doc["auto_light_mode"] = autoLightMode ? "ON" : "OFF";
+      doc["auto_status_mode"] = autoStatusMode ? "ON" : "OFF";
+
+      char buffer[512];
+      serializeJson(doc, buffer);
+      client.publish((deviceTopic + "/data").c_str(), buffer);
     }
   }
 }
@@ -123,7 +243,34 @@ void callback(char* topic, byte* payload, unsigned int length) {
     return;
   }
 
-  // อ่าน auto_light และ auto_status ก่อนเสมอ
+  if (doc.containsKey("reset_wifi")) {
+    if (parseBoolOrString(doc["reset_wifi"])) {
+      Serial.println("=> WiFi Reset Requested!");
+      shouldResetWifi = true;
+      return;
+    }
+  }
+
+  // if (doc.containsKey("full_distance")) {
+  //   int newDist = doc["full_distance"].as<int>();
+  //   if (newDist > 0 && newDist <= 400) {
+  //     fullDistance = newDist;
+  //     Serial.println("=> Full Distance set to: " + String(fullDistance) + " cm");
+  //   } else {
+  //     Serial.println("=> Invalid full_distance value (must be 1-400)");
+  //   }
+  // }
+
+  if (doc.containsKey("bin_height")) {
+    int newHeight = doc["bin_height"].as<int>();
+    if (newHeight > 0 && newHeight <= 400) {
+      binHeight = newHeight;
+      Serial.println("=> Bin Height set to: " + String(binHeight) + " cm");
+    } else {
+      Serial.println("=> Invalid bin_height value (must be 1-400)");
+    }
+  }
+
   if (doc.containsKey("auto_light")) {
     autoLightMode = parseBoolOrString(doc["auto_light"]);
     Serial.println(autoLightMode ? "=> Auto Light Mode: ENABLED" : "=> Auto Light Mode: DISABLED");
@@ -134,123 +281,24 @@ void callback(char* topic, byte* payload, unsigned int length) {
     Serial.println(autoStatusMode ? "=> Auto Status Mode: ENABLED" : "=> Auto Status Mode: DISABLED");
   }
 
-  // ถ้าเว็บสั่ง light มา ให้ปิด autoLightMode อัตโนมัติแล้วสั่งงานเลย
   if (doc.containsKey("light")) {
     autoLightMode = false;
-    isLightOn = parseBoolOrString(doc["light"]);
+    bool isLightOn = parseBoolOrString(doc["light"]);
     digitalWrite(LIGHT_PIN, isLightOn ? HIGH : LOW);
-    Serial.println("=> Auto Light Mode: DISABLED (by manual command)");
     Serial.println(isLightOn ? "=> Manual Light: ON" : "=> Manual Light: OFF");
   }
 
-  // ถ้าเว็บสั่ง red/green มา ให้ปิด autoStatusMode อัตโนมัติแล้วสั่งงานเลย
   if (doc.containsKey("red")) {
     autoStatusMode = false;
-    isRedOn = parseBoolOrString(doc["red"]);
+    bool isRedOn = parseBoolOrString(doc["red"]);
     digitalWrite(RED_STATUS_PIN, isRedOn ? HIGH : LOW);
-    Serial.println("=> Auto Status Mode: DISABLED (by manual command)");
     Serial.println(isRedOn ? "=> Manual Red: ON" : "=> Manual Red: OFF");
   }
 
   if (doc.containsKey("green")) {
     autoStatusMode = false;
-    isGreenOn = parseBoolOrString(doc["green"]);
+    bool isGreenOn = parseBoolOrString(doc["green"]);
     digitalWrite(GREEN_STATUS_PIN, isGreenOn ? HIGH : LOW);
-    Serial.println("=> Auto Status Mode: DISABLED (by manual command)");
     Serial.println(isGreenOn ? "=> Manual Green: ON" : "=> Manual Green: OFF");
-  }
-}
-
-void sendTelegram(String text) {
-  if (WiFi.status() != WL_CONNECTED) return;
-  WiFiClientSecure httpsClient;
-  httpsClient.setInsecure(); 
-  HTTPClient http;
-  String url = "https://api.telegram.org/bot" + String(telegram_token) +
-               "/sendMessage?chat_id=" + String(telegram_chat_id) + "&text=" + text;
-  http.begin(httpsClient, url);
-  http.GET();
-  http.end();
-}
-
-long readUltrasonic() {
-  digitalWrite(TRIG_PIN, LOW);
-  delayMicroseconds(2);
-  digitalWrite(TRIG_PIN, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(TRIG_PIN, LOW);
-  
-  // ✅ เพิ่ม Timeout 30000 ไมโครวินาที (30ms) ป้องกันบอร์ดค้างรอเซนเซอร์นานเกินไป
-  long duration = pulseIn(ECHO_PIN, HIGH, 30000);
-  return (duration == 0) ? 400 : duration * 0.034 / 2;
-}
-
-void loop() {
-  if (!client.connected()) reconnect();
-  client.loop(); 
-
-  unsigned long currentMillis = millis();
-  if (currentMillis - previousMillis >= interval) {
-    previousMillis = currentMillis;
-
-    long distance = readUltrasonic();
-    int ldrValue = analogRead(LDR_PIN);
-
-    // 1. Auto Light Logic
-    if (autoLightMode) {
-      isLightOn = (ldrValue < 200);
-      digitalWrite(LIGHT_PIN, isLightOn ? HIGH : LOW);
-    }
-
-    // 2. ถังเต็ม Logic (เช็คสถานะและจำไว้ก่อน)
-    bool justBecameFull = false; // ตัวแปรสำหรับจำว่าถังเพิ่งเต็มในรอบนี้
-    
-    if (distance <= FULL_DISTANCE) {
-      if (!isFull) {
-        isFull = true;
-        justBecameFull = true; 
-      }
-    } else {
-      if (isFull) {
-        isFull = false;
-      }
-    }
-
-    // 2.1 Auto Status Logic (สั่งเปลี่ยนสีไฟ LED ทันที!)
-    if (autoStatusMode) {
-      if (isFull) {
-        isRedOn = true;
-        isGreenOn = false;
-        digitalWrite(RED_STATUS_PIN, HIGH);
-        digitalWrite(GREEN_STATUS_PIN, LOW);
-      } else {
-        isRedOn = false;
-        isGreenOn = true;
-        digitalWrite(RED_STATUS_PIN, LOW);
-        digitalWrite(GREEN_STATUS_PIN, HIGH);
-      }
-    }
-
-    // 2.2 ส่ง Telegram (ทำหลังสุด หลังจากไฟเปลี่ยนสีเรียบร้อยแล้ว)
-    if (justBecameFull) {
-      sendTelegram("🚨 ถังขยะ [" + String(API_KEY) + "] เต็มแล้ว! (ระยะ: " + String(distance) + " cm)");
-    }
-
-    // 3. ส่งข้อมูลกลับเว็บ
-    StaticJsonDocument<512> doc;
-    doc["api_key"] = API_KEY;        
-    doc["distance_cm"] = distance;
-    doc["light_level"] = ldrValue;
-    doc["light_status"] = isLightOn ? "ON" : "OFF";
-    doc["red_led"] = isRedOn ? "ON" : "OFF";
-    doc["green_led"] = isGreenOn ? "ON" : "OFF";
-    doc["is_full"] = isFull;
-    doc["auto_light_mode"] = autoLightMode ? "ON" : "OFF";
-    doc["auto_status_mode"] = autoStatusMode ? "ON" : "OFF";
-
-    char jsonBuffer[512];
-    serializeJson(doc, jsonBuffer);
-    String dataTopic = deviceTopic + "/data";
-    client.publish(dataTopic.c_str(), jsonBuffer);
   }
 }

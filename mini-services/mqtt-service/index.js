@@ -63,7 +63,7 @@ const alertCooldown = new Map();
 function shouldAlert(binId) {
   const now = Date.now();
   const last = alertCooldown.get(binId) || 0;
-  if (now - last < (parseInt(process.env.TELEGRAM_ALERT_COOLDOWN_MIN || '5')) * 60 * 1000) return false;
+  if (now - last < 5 * 60 * 1000) return false;
   alertCooldown.set(binId, now);
   return true;
 }

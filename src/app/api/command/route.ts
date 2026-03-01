@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
         const { binId, command } = body;
-        // command = { light?: bool, red?: bool, green?: bool, auto_light?: bool }
+        // command = { light?: bool, red?: bool, green?: bool, auto_light?: bool, full_distance?: number, reset_wifi?: bool }
 
         if (!binId || !command) {
             return NextResponse.json(
@@ -60,6 +60,7 @@ export async function POST(request: NextRequest) {
             if (command.green !== undefined) updateData.led_green = command.green;
             if (command.auto_light !== undefined) updateData.auto_light = command.auto_light;
             if (command.auto_status !== undefined) updateData.auto_status = command.auto_status;
+            if (command.full_distance !== undefined) updateData.max_distance = command.full_distance;
 
             if (Object.keys(updateData).length > 0) {
                 await supabaseServer.from('bins').update(updateData).eq('id', binId);
@@ -83,6 +84,7 @@ export async function POST(request: NextRequest) {
             if (command.green !== undefined) updateData.led_green = command.green;
             if (command.auto_light !== undefined) updateData.auto_light = command.auto_light;
             if (command.auto_status !== undefined) updateData.auto_status = command.auto_status;
+            if (command.full_distance !== undefined) updateData.max_distance = command.full_distance;
 
             if (Object.keys(updateData).length > 0) {
                 await supabaseServer.from('bins').update(updateData).eq('id', binId);
